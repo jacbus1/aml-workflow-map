@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AML Case Workflow Map</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow"><span></span> AML OPERATIONS / DEMO</p>
+          <h1>案件工作流地圖</h1>
+          <p class="subtitle">大量 AML case 的分流、調查、審核與結案流程</p>
+        </div>
+        <div class="summary" aria-label="案件摘要">
+          <div><strong>1,248</strong><span>本週新案</span></div>
+          <div><strong>72</strong><span>需要升級</span></div>
+          <div><strong>94.6%</strong><span>SLA 內</span></div>
+        </div>
+      </header>
+
+      <section class="legend-row" aria-label="圖例與操作說明">
+        <div class="legend"><i class="dot green"></i> 正常 <i class="dot amber"></i> 即將逾期 <i class="dot red"></i> 升級處理</div>
+        <p>點選任何有外框的節點即可展開或收合；按 Esc 可取消選取。</p>
+      </section>
+
+      <section class="board" aria-label="AML 案件工作流圖">
+        <div class="stage-labels" aria-hidden="true">
+          <span>案件組合</span><span>優先隊列</span><span>個案</span><span>工作流程</span>
+        </div>
+        <svg id="links" aria-hidden="true"></svg>
+        <div id="tree" class="tree" role="tree" aria-label="可收合 AML 工作流"></div>
+      </section>
+
+      <aside id="detail" class="detail empty" aria-live="polite">
+        <p class="detail-label">選取節點</p>
+        <h2>點選一個流程節點</h2>
+        <p>查看負責人、SLA、升級規則與所需證據。</p>
+      </aside>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
