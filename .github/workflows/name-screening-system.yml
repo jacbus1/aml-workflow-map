@@ -1,0 +1,21 @@
+name: Name screening system tests
+on:
+  push:
+    branches: [name-screening-system-v1]
+  pull_request:
+    paths:
+      - 'name-screening-system/**'
+      - '.github/workflows/name-screening-system.yml'
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: name-screening-system
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
