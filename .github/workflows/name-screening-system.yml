@@ -9,6 +9,7 @@ on:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: name-screening-system
@@ -19,3 +20,94 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements-dev.txt
       - run: pytest -q
+
+      - name: Live OFAC source sync
+        env:
+          SCREENING_DB: data/live-ofac.db
+        run: |
+          set -euo pipefail
+          mkdir -p data/source_cache
+          python -m app.source_sync | tee data/source_cache/source-sync.stdout.json
+
+      - name: Verify live OFAC receipt and hashes
+        env:
+          SCREENING_DB: data/live-ofac.db
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import sqlite3
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          cache = Path('data/source_cache')
+          manifest_path = cache / 'OFAC_manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+
+          expected_urls = {
+              'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV',
+              'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/ALT.CSV',
+          }
+          files = manifest.get('files', [])
+          assert manifest.get('source') == 'OFAC_SDN', manifest
+          assert len(files) == 2, files
+          assert {item['url'] for item in files} == expected_urls, files
+          assert int(manifest.get('records_upserted', 0)) > 1000, manifest
+
+          verified_files = []
+          for item in files:
+              path = Path(item['path'])
+              data = path.read_bytes()
+              digest = hashlib.sha256(data).hexdigest()
+              assert len(data) == int(item['bytes']), (path, len(data), item['bytes'])
+              assert digest == item['sha256'], (path, digest, item['sha256'])
+              assert len(data) > 1000, (path, len(data))
+              verified_files.append({
+                  'url': item['url'],
+                  'path': str(path),
+                  'bytes': len(data),
+                  'sha256': digest,
+                  'fetched_at': item['fetched_at'],
+              })
+
+          db_path = Path(os.environ['SCREENING_DB'])
+          with sqlite3.connect(db_path) as conn:
+              db_count = conn.execute(
+                  "SELECT COUNT(*) FROM watchlist_entities WHERE source='OFAC_SDN'"
+              ).fetchone()[0]
+          assert db_count > 1000, db_count
+
+          evidence = {
+              'gate': 'live_ofac_source_sync',
+              'status': 'PASS',
+              'verified_at': datetime.now(timezone.utc).isoformat(),
+              'github_sha': os.environ.get('GITHUB_SHA'),
+              'github_run_id': os.environ.get('GITHUB_RUN_ID'),
+              'github_run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
+              'source': manifest['source'],
+              'records_upserted': manifest['records_upserted'],
+              'db_ofac_record_count': db_count,
+              'files': verified_files,
+          }
+          out = cache / 'release-gate-evidence.json'
+          out.write_text(json.dumps(evidence, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(evidence, indent=2))
+          PY
+          sha256sum data/source_cache/OFAC_SDN.csv data/source_cache/OFAC_ALT.csv | tee data/source_cache/sha256sum.txt
+
+      - name: Upload live OFAC release-gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-ofac-release-gate-${{ github.sha }}
+          path: |
+            name-screening-system/data/source_cache/OFAC_manifest.json
+            name-screening-system/data/source_cache/release-gate-evidence.json
+            name-screening-system/data/source_cache/sha256sum.txt
+            name-screening-system/data/source_cache/source-sync.stdout.json
+            name-screening-system/data/source_cache/OFAC_SDN.csv
+            name-screening-system/data/source_cache/OFAC_ALT.csv
+          if-no-files-found: warn
+          retention-days: 30
