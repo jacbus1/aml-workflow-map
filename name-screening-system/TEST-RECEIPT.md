@@ -1,46 +1,129 @@
-# Test Receipt — Name Screening System v0.1.0
+# Jac-Name-Screening v2.0 — Test Receipt
 
-Date: 2026-09-16  
-Live-gate update: 2026-09-17
+Date: 2026-09-18
 
-## Local automated suite
+## Automated suite
 
-```text
-.........                                                                [100%]
-9 passed in 0.60s
+Command:
+
+```bash
+python -m pytest -q
 ```
 
-The suite covered normalization, reversed names, exact alias selection, DOB match/mismatch without hard filtering, threshold rejection, generic CSV import, OFAC SDN+ALT joining, HTTP health/import/screen/batch, UI route, and OFAC import followed by screening.
+Result:
+
+```text
+31 passed
+```
+
+Coverage by behaviour includes:
+
+- Unicode/diacritic/punctuation normalization
+- reversed/token-order names
+- transliteration
+- strong aliases
+- weak aliases and weak-alias disable switch
+- weak alias score penalty/cap
+- multiple DOB values / year-only DOB
+- DOB mismatch remains evidence, not a universal hard filter
+- country equivalence (`Russian Federation` ↔ `Russia`)
+- single-token non-exact cap
+- corporate-suffix subset penalty
+- blank-name rejection
+- generic CSV import
+- OFAC primary + ALT join
+- OFAC primary + ALT + ADD + comments join
+- UK `Unique ID` grouping and alias strength
+- UN good/low-quality alias routing, multiple DOB, native script
+- Canada tolerant XML adapter
+- atomic source replacement
+- stale-record deletion
+- empty-replacement protection
+- source snapshot receipt
+- HTTP health/import/screen/batch flow
+- browser security headers
+- upload size limit
+- batch row limit
+- CSV formula-injection escaping
+- atomic generic source replacement via API
+- public-person benchmark regression
+
+## Deterministic multi-agent release gate
+
+Command:
+
+```bash
+python scripts/release_gate.py
+```
+
+Result:
+
+```text
+SourceAgent: PASS       (9 tests)
+MatchingDataScientistAgent: PASS  (14 tests)
+SecurityQAAgent: PASS   (8 tests)
+ManagerAgent: PASS
+RELEASE_GATE: PASS
+```
+
+## Public-person benchmark
+
+Command:
+
+```bash
+python scripts/run_public_benchmark.py
+```
+
+Result:
+
+```text
+Positive cases: 11/11 PASS
+Fixture negative controls: 3/3 PASS
+Threshold: 80
+```
+
+Name-only typo examples:
+
+```text
+Roman Abramovitch  -> Roman ABRAMOVICH      name score 96.97
+Viktor Vekselburg  -> Viktor Vekselberg     name score 94.12
+```
+
+See `BENCHMARK-ZH.md`, `BENCHMARK-EN.md` and `BENCHMARK-RESULTS.json`.
 
 ## Runtime smoke test
 
-A local Uvicorn instance was started successfully after bootstrapping four fictional demo records.
+A real Uvicorn process was started on `127.0.0.1:8765` using a fresh SQLite database.
 
-Observed `/health`:
+Verified:
 
-```json
-{"ok":true,"stats":{"entities":4,"screenings":0,"by_source":{"DEMO":4}}}
+```text
+GET  /health              200
+GET  /                    200
+POST /api/import/generic  200 (4 records, atomic replace)
+POST /api/screen          200
 ```
 
-Observed fuzzy case: `Muhamad Ahmad Khan` matched alias `Muhammad Ahmad Khan` with name similarity `97.3`; matching DOB and country produced final score `100.0`.
+End-to-end smoke query:
 
-Batch smoke test returned 100.0 matches for the four intended demo variants and no result above threshold for `Completely Different Person`.
+```text
+Input: Oleg Deripaska / 1968-01-02 / Russia
+Matched fixture: Oleg Vladimirovich Deripaska
+Matched alias: Oleg Deripaska
+Final score: 100
+Risk band: HIGH_CANDIDATE
+```
 
-## External OFAC live refresh
+## Live official-source network sync
 
-**PASS in GitHub Actions.** The release-gate workflow now runs `python -m app.source_sync` on a networked GitHub-hosted runner, downloads the fixed OFAC SLS `SDN.CSV` and `ALT.CSV` sources, parses and upserts the result, recomputes SHA-256 from the saved bytes, verifies byte counts and source URLs, checks the SQLite OFAC row count, and uploads the source snapshot plus receipt files as a workflow artifact.
+`app.source_sync` now uses the OFAC four-file family and an atomic replacement/hash receipt flow.
 
-Initial live validation receipt:
+**Live remote download is NOT_RUN in this receipt.** The execution environment did not provide reliable direct binary/XML download access to the official endpoints. Parser behaviour, joins, source replacement and hashing logic were exercised with fixtures and local integration tests instead.
 
-- PR head tested: `a4f8a235f1510ad7c2e877c76d688c59d15d9b71`
-- PR merge commit tested: `07b55c94f6a8add7ad70328a94e4793c3f750edd`
-- GitHub Actions run: `35192054894`
-- Result: `PASS`
-- OFAC records parsed/upserted: `19,385`
-- SQLite `OFAC_SDN` records: `19,385`
-- `SDN.CSV`: 5,691,983 bytes; SHA-256 `f4424647eb39496c234a1586ef1af11f9d202813aaac732f3ceeaba21bed0884`
-- `ALT.CSV`: 1,063,992 bytes; SHA-256 `fa40fd1d5143e534477735ca01f03d3bec190dcbb549c1c9685361817c71852c`
-- Artifact ID: `10484197442`
-- Artifact ZIP SHA-256: `3c79102e31633e0130d794cc6ca2fa14aa7dfe8e6ff01cad2b077034b18dd48d`
+A networked deployment should run:
 
-The OFAC source files are live publications and can change when OFAC updates its lists. The hashes above are therefore evidence for the stated retrieval run, not hard-coded expected values. Current CI repeats the live retrieval and self-consistency checks instead of requiring those historical hashes to remain unchanged.
+```bash
+python -m app.source_sync
+```
+
+and retain `data/source_cache/OFAC_manifest.json` as source-sync evidence.

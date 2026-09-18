@@ -1,0 +1,14 @@
+<SanctionsList>
+  <Record>
+    <Regulation>Special Economic Measures Example Regulations</Regulation>
+    <EntityOrShip></EntityOrShip>
+    <TitleOrShipType>Businessperson</TitleOrShipType>
+    <LastName>DOE</LastName>
+    <GivenNames>Jane Marie</GivenNames>
+    <Aliases>Jane M Doe; J M Doe</Aliases>
+    <DateOfBirth>1980/03/12</DateOfBirth>
+    <Schedule>1</Schedule>
+    <ItemNumber>42</ItemNumber>
+    <DateOfListing>2026/01/01</DateOfListing>
+  </Record>
+</SanctionsList>

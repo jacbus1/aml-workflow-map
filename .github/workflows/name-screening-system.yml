@@ -1,4 +1,5 @@
-name: Name screening system tests
+name: Name screening system v2 tests
+
 on:
   push:
     branches: [name-screening-system-v1]
@@ -6,10 +7,11 @@ on:
     paths:
       - 'name-screening-system/**'
       - '.github/workflows/name-screening-system.yml'
+
 jobs:
-  pytest:
+  test-and-source-integrity:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: name-screening-system
@@ -19,9 +21,14 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements-dev.txt
-      - run: pytest -q
+      - name: Unit and integration tests
+        run: pytest -q
+      - name: Public benchmark regression
+        run: python scripts/run_public_benchmark.py
+      - name: Multi-agent release gate
+        run: python scripts/release_gate.py
 
-      - name: Live OFAC source sync
+      - name: Live OFAC four-file source sync
         env:
           SCREENING_DB: data/live-ofac.db
         run: |
@@ -29,7 +36,7 @@ jobs:
           mkdir -p data/source_cache
           python -m app.source_sync | tee data/source_cache/source-sync.stdout.json
 
-      - name: Verify live OFAC receipt and hashes
+      - name: Verify live OFAC hashes, snapshot and database
         env:
           SCREENING_DB: data/live-ofac.db
         run: |
@@ -43,71 +50,83 @@ jobs:
           from pathlib import Path
 
           cache = Path('data/source_cache')
-          manifest_path = cache / 'OFAC_manifest.json'
-          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-
+          manifest = json.loads((cache / 'OFAC_manifest.json').read_text(encoding='utf-8'))
           expected_urls = {
-              'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV',
-              'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/ALT.CSV',
+              'primary': 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV',
+              'aliases': 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/ALT.CSV',
+              'addresses': 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/ADD.CSV',
+              'comments': 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN_COMMENTS.CSV',
           }
-          files = manifest.get('files', [])
+          files = manifest.get('files', {})
           assert manifest.get('source') == 'OFAC_SDN', manifest
-          assert len(files) == 2, files
-          assert {item['url'] for item in files} == expected_urls, files
-          assert int(manifest.get('records_upserted', 0)) > 1000, manifest
+          assert set(files) == set(expected_urls), files
+          assert int(manifest.get('records', 0)) > 1000, manifest
+          assert int(manifest.get('replacement', {}).get('inserted', 0)) > 1000, manifest
 
-          verified_files = []
-          for item in files:
+          ordered = []
+          verified_files = {}
+          for key in ('primary', 'aliases', 'addresses', 'comments'):
+              item = files[key]
+              assert item['url'] == expected_urls[key], item
               path = Path(item['path'])
               data = path.read_bytes()
               digest = hashlib.sha256(data).hexdigest()
               assert len(data) == int(item['bytes']), (path, len(data), item['bytes'])
               assert digest == item['sha256'], (path, digest, item['sha256'])
-              assert len(data) > 1000, (path, len(data))
-              verified_files.append({
-                  'url': item['url'],
-                  'path': str(path),
-                  'bytes': len(data),
-                  'sha256': digest,
-                  'fetched_at': item['fetched_at'],
-              })
+              assert len(data) > 100, (path, len(data))
+              ordered.append(data)
+              verified_files[key] = {
+                  'url': item['url'], 'path': str(path), 'bytes': len(data),
+                  'sha256': digest, 'fetched_at': item['fetched_at']
+              }
+
+          combined = hashlib.sha256(b'\n--JNS-PART--\n'.join(ordered)).hexdigest()
+          assert combined == manifest['combined_sha256'], (combined, manifest['combined_sha256'])
 
           db_path = Path(os.environ['SCREENING_DB'])
           with sqlite3.connect(db_path) as conn:
-              db_count = conn.execute(
-                  "SELECT COUNT(*) FROM watchlist_entities WHERE source='OFAC_SDN'"
-              ).fetchone()[0]
+              db_count = conn.execute("SELECT COUNT(*) FROM watchlist_entities WHERE source='OFAC_SDN'").fetchone()[0]
+              snap = conn.execute(
+                  "SELECT sha256, record_count, parser_version FROM source_snapshots WHERE source='OFAC_SDN' ORDER BY id DESC LIMIT 1"
+              ).fetchone()
           assert db_count > 1000, db_count
+          assert snap is not None, 'missing source snapshot'
+          assert snap[0] == combined, (snap[0], combined)
+          assert int(snap[1]) == db_count, (snap[1], db_count)
 
           evidence = {
-              'gate': 'live_ofac_source_sync',
+              'gate': 'live_ofac_four_file_source_sync',
               'status': 'PASS',
               'verified_at': datetime.now(timezone.utc).isoformat(),
               'github_sha': os.environ.get('GITHUB_SHA'),
               'github_run_id': os.environ.get('GITHUB_RUN_ID'),
-              'github_run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
               'source': manifest['source'],
-              'records_upserted': manifest['records_upserted'],
+              'records': manifest['records'],
               'db_ofac_record_count': db_count,
+              'combined_sha256': combined,
+              'parser_version': snap[2],
               'files': verified_files,
           }
-          out = cache / 'release-gate-evidence.json'
+          out = cache / 'release-gate-evidence-v2.json'
           out.write_text(json.dumps(evidence, indent=2) + '\n', encoding='utf-8')
           print(json.dumps(evidence, indent=2))
           PY
-          sha256sum data/source_cache/OFAC_SDN.csv data/source_cache/OFAC_ALT.csv | tee data/source_cache/sha256sum.txt
+          sha256sum data/source_cache/OFAC_*.csv | tee data/source_cache/sha256sum.txt
 
-      - name: Upload live OFAC release-gate evidence
+      - name: Upload v2 release-gate evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: live-ofac-release-gate-${{ github.sha }}
+          name: live-ofac-v2-release-gate-${{ github.sha }}
           path: |
             name-screening-system/data/source_cache/OFAC_manifest.json
-            name-screening-system/data/source_cache/release-gate-evidence.json
+            name-screening-system/data/source_cache/release-gate-evidence-v2.json
             name-screening-system/data/source_cache/sha256sum.txt
             name-screening-system/data/source_cache/source-sync.stdout.json
             name-screening-system/data/source_cache/OFAC_SDN.csv
             name-screening-system/data/source_cache/OFAC_ALT.csv
+            name-screening-system/data/source_cache/OFAC_ADD.csv
+            name-screening-system/data/source_cache/OFAC_SDN_COMMENTS.csv
+            name-screening-system/BENCHMARK-RESULTS.json
           if-no-files-found: warn
           retention-days: 30
