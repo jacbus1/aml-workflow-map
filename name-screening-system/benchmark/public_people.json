@@ -1,0 +1,76 @@
+{
+  "as_of": "2026-09-18",
+  "purpose": "Matching regression benchmark only; not a legal current-sanctions-status certification.",
+  "entities": [
+    {
+      "source": "CANADA_BENCHMARK",
+      "source_id": "CA-RUSSIA-2022-03-06-DERIPASKA",
+      "entity_type": "individual",
+      "primary_name": "Oleg Vladimirovich DERIPASKA",
+      "aliases": ["Oleg Deripaska"],
+      "weak_aliases": [],
+      "native_names": ["Олег Владимирович Дерипаска"],
+      "dobs": ["1968"],
+      "countries": ["Russia"],
+      "programs": ["Special Economic Measures (Russia) Regulations"],
+      "source_url": "https://www.international.gc.ca/world-monde/issues_development-enjeux_developpement/response_conflict-reponse_conflits/crisis-crises/ukraine-sanctions.aspx?lang=eng",
+      "evidence_note": "Government of Canada page lists Oleg Vladimirovich Deripaska among individuals sanctioned on 2022-03-06."
+    },
+    {
+      "source": "UK_BENCHMARK",
+      "source_id": "RUS0270",
+      "entity_type": "individual",
+      "primary_name": "Roman Arkadyevich ABRAMOVICH",
+      "aliases": ["Roman ABRAMOVICH"],
+      "weak_aliases": [],
+      "native_names": ["Роман Аркадьевич АБРАМОВИЧ"],
+      "dobs": ["1966-10-24"],
+      "countries": ["Russia","Israel","Portugal"],
+      "programs": ["The Russia (Sanctions) (EU Exit) Regulations 2019"],
+      "source_url": "https://search-uk-sanctions-list.service.gov.uk/designations/RUS0270/Individual",
+      "evidence_note": "UK Sanctions List designation page, Unique ID RUS0270."
+    },
+    {
+      "source": "OFAC_BENCHMARK",
+      "source_id": "OFAC-2022-SECHIN",
+      "entity_type": "individual",
+      "primary_name": "SECHIN Igor Ivanovich",
+      "aliases": ["Igor Sechin"],
+      "weak_aliases": [],
+      "native_names": ["СЕЧИН Игорь Иванович"],
+      "dobs": ["1960-09-07"],
+      "countries": ["Russia"],
+      "programs": ["UKRAINE-EO13661","RUSSIA-EO14024"],
+      "source_url": "https://ofac.treasury.gov/recent-actions/20220224",
+      "evidence_note": "OFAC 2022 identification update gives Igor Ivanovich Sechin and alias Igor Sechin."
+    },
+    {
+      "source": "OFAC_BENCHMARK",
+      "source_id": "OFAC-2022-VEKSELBERG",
+      "entity_type": "individual",
+      "primary_name": "VEKSELBERG Viktor Feliksovich",
+      "aliases": ["Viktor Vekselberg","VEKSELBERG Victor"],
+      "weak_aliases": [],
+      "native_names": ["ВЕКСЕЛЬБЕРГ Виктор Феликсович"],
+      "dobs": ["1957-04-14"],
+      "countries": ["Russia"],
+      "programs": ["UKRAINE-EO13662","RUSSIA-EO14024"],
+      "source_url": "https://ofac.treasury.gov/recent-actions/20220311",
+      "evidence_note": "OFAC 2022 identification update gives Viktor Feliksovich Vekselberg and alias Victor."
+    }
+  ],
+  "positive_cases": [
+    {"name":"Oleg Deripaska","dob":"1968","country":"Russia","expected_source_id":"CA-RUSSIA-2022-03-06-DERIPASKA"},
+    {"name":"Deripaska Oleg","dob":"1968","country":"Russian Federation","expected_source_id":"CA-RUSSIA-2022-03-06-DERIPASKA"},
+    {"name":"Oleg Vladimirovich Deripaska","dob":"1968","country":"Russia","expected_source_id":"CA-RUSSIA-2022-03-06-DERIPASKA"},
+    {"name":"Roman Abramovich","dob":"1966-10-24","country":"Russia","expected_source_id":"RUS0270"},
+    {"name":"Abramovich Roman Arkadyevich","dob":"1966-10-24","country":"Israel","expected_source_id":"RUS0270"},
+    {"name":"Roman Abramovitch","expected_source_id":"RUS0270"},
+    {"name":"Igor Sechin","dob":"1960-09-07","country":"Russia","expected_source_id":"OFAC-2022-SECHIN"},
+    {"name":"Sechin Igor Ivanovich","dob":"1960-09-07","country":"Russian Federation","expected_source_id":"OFAC-2022-SECHIN"},
+    {"name":"Viktor Vekselberg","dob":"1957-04-14","country":"Russia","expected_source_id":"OFAC-2022-VEKSELBERG"},
+    {"name":"Victor Vekselberg","dob":"1957-04-14","country":"Russia","expected_source_id":"OFAC-2022-VEKSELBERG"},
+    {"name":"Viktor Vekselburg","expected_source_id":"OFAC-2022-VEKSELBERG"}
+  ],
+  "negative_controls": [{"name":"Taylor Swift"},{"name":"Cristiano Ronaldo"},{"name":"Jackie Chan"}]
+}

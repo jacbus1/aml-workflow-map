@@ -1,0 +1,5 @@
+source,source_id,entity_type,primary_name,aliases,dob,countries,programs,source_url,remarks
+DEMO,D1,individual,Oleg Vladimirovich Deripaska,"Oleg Deripaska|DERIPASKA Oleg Vladimirovich",1968-01-02,Russia,DEMO-SANCTIONS,https://example.invalid/demo,Demo fixture only
+DEMO,D2,individual,Mohammed Ahmed Khan,"Muhammad Ahmad Khan|Mohamed Ahmed Khan",1975-03-15,"Pakistan|United Kingdom",DEMO-WATCHLIST,https://example.invalid/demo,Demo fixture only
+DEMO,D3,entity,North Star Trading Limited,"Northstar Trading Ltd|North Star Trading Ltd",,Canada,DEMO-WATCHLIST,https://example.invalid/demo,Demo fixture only
+DEMO,D4,individual,張偉,"Zhang Wei|Chang Wei",1980-12-01,China,DEMO-WATCHLIST,https://example.invalid/demo,Demo fixture only

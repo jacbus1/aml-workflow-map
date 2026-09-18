@@ -1,0 +1,132 @@
+name: Name screening system v2 tests
+
+on:
+  push:
+    branches: [name-screening-system-v1]
+  pull_request:
+    paths:
+      - 'name-screening-system/**'
+      - '.github/workflows/name-screening-system.yml'
+
+jobs:
+  test-and-source-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: name-screening-system
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - name: Unit and integration tests
+        run: pytest -q
+      - name: Public benchmark regression
+        run: python scripts/run_public_benchmark.py
+      - name: Multi-agent release gate
+        run: python scripts/release_gate.py
+
+      - name: Live OFAC four-file source sync
+        env:
+          SCREENING_DB: data/live-ofac.db
+        run: |
+          set -euo pipefail
+          mkdir -p data/source_cache
+          python -m app.source_sync | tee data/source_cache/source-sync.stdout.json
+
+      - name: Verify live OFAC hashes, snapshot and database
+        env:
+          SCREENING_DB: data/live-ofac.db
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import sqlite3
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          cache = Path('data/source_cache')
+          manifest = json.loads((cache / 'OFAC_manifest.json').read_text(encoding='utf-8'))
+          expected_urls = {
+              'primary': 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV',
+              'aliases': 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/ALT.CSV',
+              'addresses': 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/ADD.CSV',
+              'comments': 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN_COMMENTS.CSV',
+          }
+          files = manifest.get('files', {})
+          assert manifest.get('source') == 'OFAC_SDN', manifest
+          assert set(files) == set(expected_urls), files
+          assert int(manifest.get('records', 0)) > 1000, manifest
+          assert int(manifest.get('replacement', {}).get('inserted', 0)) > 1000, manifest
+
+          ordered = []
+          verified_files = {}
+          for key in ('primary', 'aliases', 'addresses', 'comments'):
+              item = files[key]
+              assert item['url'] == expected_urls[key], item
+              path = Path(item['path'])
+              data = path.read_bytes()
+              digest = hashlib.sha256(data).hexdigest()
+              assert len(data) == int(item['bytes']), (path, len(data), item['bytes'])
+              assert digest == item['sha256'], (path, digest, item['sha256'])
+              assert len(data) > 100, (path, len(data))
+              ordered.append(data)
+              verified_files[key] = {
+                  'url': item['url'], 'path': str(path), 'bytes': len(data),
+                  'sha256': digest, 'fetched_at': item['fetched_at']
+              }
+
+          combined = hashlib.sha256(b'\n--JNS-PART--\n'.join(ordered)).hexdigest()
+          assert combined == manifest['combined_sha256'], (combined, manifest['combined_sha256'])
+
+          db_path = Path(os.environ['SCREENING_DB'])
+          with sqlite3.connect(db_path) as conn:
+              db_count = conn.execute("SELECT COUNT(*) FROM watchlist_entities WHERE source='OFAC_SDN'").fetchone()[0]
+              snap = conn.execute(
+                  "SELECT sha256, record_count, parser_version FROM source_snapshots WHERE source='OFAC_SDN' ORDER BY id DESC LIMIT 1"
+              ).fetchone()
+          assert db_count > 1000, db_count
+          assert snap is not None, 'missing source snapshot'
+          assert snap[0] == combined, (snap[0], combined)
+          assert int(snap[1]) == db_count, (snap[1], db_count)
+
+          evidence = {
+              'gate': 'live_ofac_four_file_source_sync',
+              'status': 'PASS',
+              'verified_at': datetime.now(timezone.utc).isoformat(),
+              'github_sha': os.environ.get('GITHUB_SHA'),
+              'github_run_id': os.environ.get('GITHUB_RUN_ID'),
+              'source': manifest['source'],
+              'records': manifest['records'],
+              'db_ofac_record_count': db_count,
+              'combined_sha256': combined,
+              'parser_version': snap[2],
+              'files': verified_files,
+          }
+          out = cache / 'release-gate-evidence-v2.json'
+          out.write_text(json.dumps(evidence, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(evidence, indent=2))
+          PY
+          sha256sum data/source_cache/OFAC_*.csv | tee data/source_cache/sha256sum.txt
+
+      - name: Upload v2 release-gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-ofac-v2-release-gate-${{ github.sha }}
+          path: |
+            name-screening-system/data/source_cache/OFAC_manifest.json
+            name-screening-system/data/source_cache/release-gate-evidence-v2.json
+            name-screening-system/data/source_cache/sha256sum.txt
+            name-screening-system/data/source_cache/source-sync.stdout.json
+            name-screening-system/data/source_cache/OFAC_SDN.csv
+            name-screening-system/data/source_cache/OFAC_ALT.csv
+            name-screening-system/data/source_cache/OFAC_ADD.csv
+            name-screening-system/data/source_cache/OFAC_SDN_COMMENTS.csv
+            name-screening-system/BENCHMARK-RESULTS.json
+          if-no-files-found: warn
+          retention-days: 30
